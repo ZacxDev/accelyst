@@ -1,10 +1,14 @@
 # Accelyst
 
-A structured project evolution tool that generates execution prompts for AI agents to autonomously implement features from high-level descriptions.
+Transform your feature backlog into rich-context prompts.
 
 ## Overview
 
-Accelyst parses project structure and milestone definitions, then generates topologically-sorted execution prompts. Steps without dependencies are marked for parallel subagent execution.
+Accelyst takes your project structure and feature backlog, then generates execution-ready prompts with full codebase context. Each prompt includes relevant directories, documentation paths, and dependency ordering—everything an AI agent needs to implement features autonomously.
+
+- **Rich context**: Prompts reference exact directories and documentation
+- **Dependency-aware**: Steps are topologically sorted so prerequisites complete first
+- **Parallel-ready**: Independent steps are marked for concurrent subagent execution
 
 ## Installation
 

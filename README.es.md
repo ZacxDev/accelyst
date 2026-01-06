@@ -1,10 +1,14 @@
 # Accelyst
 
-Una herramienta estructurada de evolución de proyectos que genera prompts de ejecución para que agentes de IA implementen funcionalidades de forma autónoma a partir de descripciones de alto nivel.
+Transforma tu backlog de funcionalidades en prompts con contexto enriquecido.
 
 ## Descripción
 
-Accelyst analiza la estructura del proyecto y las definiciones de hitos, luego genera prompts ordenados topológicamente. Los pasos sin dependencias se marcan para ejecución paralela mediante subagentes.
+Accelyst toma la estructura de tu proyecto y el backlog de funcionalidades, y genera prompts listos para ejecución con el contexto completo del código. Cada prompt incluye los directorios relevantes, rutas de documentación y orden de dependencias—todo lo que un agente de IA necesita para implementar funcionalidades de forma autónoma.
+
+- **Contexto enriquecido**: Los prompts referencian directorios exactos y documentación
+- **Consciente de dependencias**: Los pasos se ordenan topológicamente para que los prerrequisitos se completen primero
+- **Listo para paralelismo**: Los pasos independientes se marcan para ejecución concurrente con subagentes
 
 ## Instalación
 
