@@ -1,0 +1,67 @@
+projectParts:
+  - name: client
+    directoryAbs: /home/zach/workspace/myproject/client
+    documentationAbs: /home/zach/workspace/myproject/docs/client.md
+  - name: server
+    directoryAbs: /home/zach/workspace/myproject/server
+  - name: database
+    directoryAbs: /home/zach/workspace/myproject/db
+    documentationAbs: /home/zach/workspace/myproject/docs/schema.md
+
+milestones:
+  - name: "Update UI Style"
+    steps:
+      - id: 1
+        instruction: "use context7 and search to pull the tailwind v4 documentation"
+        dependsOnStepIds: []
+        projectParts: []
+      - id: 2
+        instruction: "use context7 and search to pull the lit webcomponents documentation"
+        dependsOnStepIds: []
+        projectParts: []
+      - id: 3
+        instruction: "analyze the client implementation"
+        dependsOnStepIds: []
+        projectParts:
+          - client
+      - id: 4
+        instruction: "migrate the existing client html/css to use tailwind and lit webcomponents, update the styling and layout to be simple and delightful"
+        dependsOnStepIds:
+          - 1
+          - 2
+          - 3
+        projectParts:
+          - client
+
+  - name: "Add API Endpoint"
+    steps:
+      - id: 1
+        instruction: "review existing API patterns"
+        dependsOnStepIds: []
+        projectParts:
+          - server
+      - id: 2
+        instruction: "review database schema"
+        dependsOnStepIds: []
+        projectParts:
+          - database
+      - id: 3
+        instruction: "implement new endpoint following existing patterns"
+        dependsOnStepIds:
+          - 1
+          - 2
+        projectParts:
+          - server
+      - id: 4
+        instruction: "add database migrations if needed"
+        dependsOnStepIds:
+          - 3
+        projectParts:
+          - database
+      - id: 5
+        instruction: "write integration tests"
+        dependsOnStepIds:
+          - 3
+          - 4
+        projectParts:
+          - server
