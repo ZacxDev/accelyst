@@ -9,59 +9,95 @@ projectParts:
     documentationAbs: /home/zach/workspace/myproject/docs/schema.md
 
 milestones:
-  - name: "Update UI Style"
+  - id: update_ui_style
+    name: "Update UI Style"
+    dependsOn: []
     steps:
-      - id: 1
+      - id: research_tailwind
         instruction: "use context7 and search to pull the tailwind v4 documentation"
-        dependsOnStepIds: []
+        dependsOn: []
         projectParts: []
-      - id: 2
+      - id: research_lit
         instruction: "use context7 and search to pull the lit webcomponents documentation"
-        dependsOnStepIds: []
+        dependsOn: []
         projectParts: []
-      - id: 3
+      - id: analyze_client
         instruction: "analyze the client implementation"
-        dependsOnStepIds: []
+        dependsOn: []
         projectParts:
           - client
-      - id: 4
+      - id: migrate_client
         instruction: "migrate the existing client html/css to use tailwind and lit webcomponents, update the styling and layout to be simple and delightful"
-        dependsOnStepIds:
-          - 1
-          - 2
-          - 3
+        dependsOn:
+          - research_tailwind
+          - research_lit
+          - analyze_client
         projectParts:
           - client
 
-  - name: "Add API Endpoint"
+  - id: add_api_endpoint
+    name: "Add API Endpoint"
+    dependsOn: []
     steps:
-      - id: 1
+      - id: review_api
         instruction: "review existing API patterns"
-        dependsOnStepIds: []
+        dependsOn: []
         projectParts:
           - server
-      - id: 2
+      - id: review_schema
         instruction: "review database schema"
-        dependsOnStepIds: []
+        dependsOn: []
         projectParts:
           - database
-      - id: 3
+      - id: impl_endpoint
         instruction: "implement new endpoint following existing patterns"
-        dependsOnStepIds:
-          - 1
-          - 2
+        dependsOn:
+          - review_api
+          - review_schema
         projectParts:
           - server
-      - id: 4
+      - id: add_migrations
         instruction: "add database migrations if needed"
-        dependsOnStepIds:
-          - 3
+        dependsOn:
+          - impl_endpoint
         projectParts:
           - database
-      - id: 5
+      - id: write_tests
         instruction: "write integration tests"
-        dependsOnStepIds:
-          - 3
-          - 4
+        dependsOn:
+          - impl_endpoint
+          - add_migrations
         projectParts:
           - server
+
+  - id: integrate_ui_api
+    name: "Integrate UI with API"
+    dependsOn:
+      - update_ui_style
+      - add_api_endpoint
+    steps:
+      - id: impl_api_client
+        instruction: "implement API client in frontend"
+        dependsOn: []
+        projectParts:
+          - client
+        acceptanceCriteria:
+          - "API client module created"
+          - "fetch wrapper handles auth headers"
+      - id: wire_components
+        instruction: "wire UI components to API endpoints"
+        dependsOn:
+          - impl_api_client
+        projectParts:
+          - client
+        acceptanceCriteria:
+          - "components fetch data on mount"
+          - "loading and error states handled"
+      - id: configure_cors
+        instruction: "configure CORS settings in production environment"
+        dependsOn:
+          - wire_components
+        projectParts: []
+        tier: human
+        acceptanceCriteria:
+          - "CORS headers configured for production domain"

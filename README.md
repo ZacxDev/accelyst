@@ -1,14 +1,16 @@
 # Accelyst
 
-Transform your feature backlog into rich-context prompts.
+An AI-native project iteration interface.
 
 ## Overview
 
-Accelyst takes your project structure and feature backlog, then generates execution-ready prompts with full codebase context. Each prompt includes relevant directories, documentation paths, and dependency ordering—everything an AI agent needs to implement features autonomously.
+Accelyst transforms your project structure and feature backlog into execution-ready prompts with full codebase context. Each prompt includes relevant directories, documentation paths, dependency ordering, and completion criteria—everything an AI agent needs to implement features autonomously.
 
 - **Rich context**: Prompts reference exact directories and documentation
-- **Dependency-aware**: Steps are topologically sorted so prerequisites complete first
-- **Parallel-ready**: Independent steps are marked for concurrent subagent execution
+- **Dependency-aware**: Milestones and steps are topologically sorted via DAG
+- **Parallel-ready**: Independent work is marked for concurrent subagent execution
+- **Tier-aware**: Distinguishes AI-executable steps from human-required actions
+- **Completion criteria**: Acceptance criteria define when steps are done
 
 ## Installation
 
@@ -34,46 +36,99 @@ projectParts:
     directoryAbs: /path/to/server
 
 milestones:
-  - name: "Feature Name"
+  - id: auth_api
+    name: "Authentication API"
+    dependsOn: []
     steps:
-      - id: 1
-        instruction: "research the documentation"
-        dependsOnStepIds: []
+      - id: research
+        instruction: "research JWT best practices"
+        dependsOn: []
         projectParts: []
-      - id: 2
-        instruction: "analyze the existing implementation"
-        dependsOnStepIds: []
+        acceptanceCriteria:
+          - "documented token expiry strategy"
+      - id: implement
+        instruction: "implement auth endpoints"
+        dependsOn:
+          - research
         projectParts:
-          - client
-      - id: 3
-        instruction: "implement the feature"
-        dependsOnStepIds:
-          - 1
-          - 2
-        projectParts:
-          - client
           - server
+        acceptanceCriteria:
+          - "login and logout endpoints working"
+          - "unit tests passing"
+
+  - id: auth_ui
+    name: "Authentication UI"
+    dependsOn:
+      - auth_api
+    steps:
+      - id: build_form
+        instruction: "implement login form"
+        dependsOn: []
+        projectParts:
+          - client
+      - id: configure_oauth
+        instruction: "configure OAuth provider in production"
+        dependsOn:
+          - build_form
+        tier: human
+        acceptanceCriteria:
+          - "OAuth credentials configured"
 ```
+
+### Fields
+
+**Milestone:**
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | Yes | Unique identifier across all milestones |
+| `name` | Yes | Human-readable name |
+| `dependsOn` | No | Milestone IDs that must complete first |
+| `steps` | Yes | Ordered list of steps |
+
+**Step:**
+| Field | Required | Description |
+|-------|----------|-------------|
+| `id` | Yes | Unique identifier within the milestone |
+| `instruction` | Yes | Action to perform |
+| `dependsOn` | No | Step IDs that must complete first |
+| `projectParts` | No | Project parts relevant to this step |
+| `acceptanceCriteria` | No | Conditions that define "done" |
+| `tier` | No | `ai` (default) or `human` |
+
+### Tier Values
+
+- **ai**: Step can be fully executed by an AI agent autonomously
+- **human**: Step requires human action (approvals, external setup, physical tasks)
 
 ## Output Format
 
 ```
-# Milestone: Feature Name
+# Milestone: Authentication API
 
-1: use a subagent to research the documentation
-2: use a subagent to Analyze client (/path/to/client) then analyze the existing implementation
-3: Analyze client (/path/to/client), server (/path/to/server) then read results from steps 1, 2 then implement the feature
+research: use a subagent to research JWT best practices [done when: documented token expiry strategy]
+implement: Analyze server (/path/to/server) then read results from steps research then implement auth endpoints [done when: login and logout endpoints working; unit tests passing]
+
+---
+
+# Milestone: Authentication UI (depends on: auth_api)
+
+build_form: use a subagent to Analyze client (/path/to/client) then implement login form
+configure_oauth: [HUMAN] read results from steps build_form then configure OAuth provider in production [done when: OAuth credentials configured]
 ```
 
-- Steps with no dependencies get `use a subagent to` prefix (parallelizable)
-- Steps with dependencies include `read results from steps X, Y`
-- Steps with project parts include `Analyze <name> (<path>) (docs: <path>)`
+**Output components:**
+- `[HUMAN]` prefix marks steps requiring human action
+- `use a subagent to` prefix marks parallelizable AI steps
+- `Analyze <name> (<path>)` provides codebase context
+- `read results from steps X, Y` chains dependent steps
+- `[done when: ...]` defines completion criteria
 
 ## How It Works
 
 1. Parse `projectParts` and `milestones` from YAML
-2. For each milestone:
+2. Topologically sort milestones by dependencies (Kahn's algorithm)
+3. For each milestone:
    - Build a DAG from step dependencies
-   - Topologically sort steps (Kahn's algorithm)
+   - Topologically sort steps
    - Generate prompt fragments with resolved references
-3. Output concatenated prompts per milestone
+4. Output concatenated prompts per milestone
