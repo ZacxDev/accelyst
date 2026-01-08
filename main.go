@@ -1,12 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
 	"sort"
 	"strings"
 
+	"github.com/xeipuuv/gojsonschema"
 	"gopkg.in/yaml.v3"
 )
 
@@ -39,6 +41,124 @@ type Milestone struct {
 type Config struct {
 	ProjectParts []ProjectPart `yaml:"projectParts"`
 	Milestones   []Milestone   `yaml:"milestones"`
+}
+
+// JSON Schema for validation (from SPEC.md)
+const configSchema = `{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["projectParts", "milestones"],
+  "properties": {
+    "projectParts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "directoryAbs"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "directoryAbs": { "type": "string", "minLength": 1 },
+          "documentationAbs": { "type": "string" }
+        }
+      }
+    },
+    "milestones": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "steps"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "name": { "type": "string", "minLength": 1 },
+          "dependsOn": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "steps": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["id", "instruction"],
+              "properties": {
+                "id": { "type": "string", "minLength": 1 },
+                "instruction": { "type": "string", "minLength": 1 },
+                "dependsOn": {
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 }
+                },
+                "projectParts": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "acceptanceCriteria": {
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 }
+                },
+                "tier": {
+                  "type": "string",
+                  "enum": ["ai", "human"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`
+
+// validateConfig validates the config against the JSON schema
+func validateConfig(data []byte) error {
+	// Parse YAML to generic interface for JSON conversion
+	var raw interface{}
+	if err := yaml.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("failed to parse YAML: %w", err)
+	}
+
+	// Convert to JSON
+	jsonData, err := json.Marshal(convertYAMLToJSON(raw))
+	if err != nil {
+		return fmt.Errorf("failed to convert to JSON: %w", err)
+	}
+
+	// Validate against schema
+	schemaLoader := gojsonschema.NewStringLoader(configSchema)
+	documentLoader := gojsonschema.NewBytesLoader(jsonData)
+
+	result, err := gojsonschema.Validate(schemaLoader, documentLoader)
+	if err != nil {
+		return fmt.Errorf("schema validation error: %w", err)
+	}
+
+	if !result.Valid() {
+		var errs []string
+		for _, err := range result.Errors() {
+			errs = append(errs, fmt.Sprintf("  - %s", err.String()))
+		}
+		return fmt.Errorf("config validation failed:\n%s", strings.Join(errs, "\n"))
+	}
+
+	return nil
+}
+
+// convertYAMLToJSON converts YAML-parsed data to JSON-compatible format
+// (handles map[interface{}]interface{} -> map[string]interface{})
+func convertYAMLToJSON(v interface{}) interface{} {
+	switch v := v.(type) {
+	case map[interface{}]interface{}:
+		m := make(map[string]interface{})
+		for k, val := range v {
+			m[fmt.Sprintf("%v", k)] = convertYAMLToJSON(val)
+		}
+		return m
+	case []interface{}:
+		for i, val := range v {
+			v[i] = convertYAMLToJSON(val)
+		}
+		return v
+	default:
+		return v
+	}
 }
 
 // DAG performs topological sort on steps using Kahn's algorithm
@@ -253,6 +373,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Validate against JSON schema
+	if err := validateConfig(data); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		os.Exit(1)
+	}
+
 	// Parse YAML
 	var config Config
 	if err := yaml.Unmarshal(data, &config); err != nil {
@@ -276,7 +402,7 @@ func main() {
 	// Process each milestone in sorted order
 	for i, milestone := range sortedMilestones {
 		if i > 0 {
-			fmt.Println("\n---\n")
+			fmt.Print("\n---\n\n")
 		}
 
 		// Build milestone header with dependencies
