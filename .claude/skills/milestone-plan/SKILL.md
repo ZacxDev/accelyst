@@ -45,7 +45,8 @@ Accelyst uses a registry + epics architecture:
 10. **Identify Remaining Ambiguities** - Flag items needing clarification (excluding items with @agent answers)
 11. **Ask Questions** - Use AskUserQuestion for critical decisions
 12. **Apply Remaining @agent Directives** - Process notes, defer, priority, split, etc.
-13. **Output Brief** - Generate structured planning brief with all directives applied
+13. **Identify Modified Files** - For each implementation step, predict which files will be modified (see below)
+14. **Output Brief** - Generate structured planning brief with all directives applied
 
 ### Step 4: Detect Incompleteness (Required)
 
@@ -265,6 +266,96 @@ Items can have multiple @agent directives:
 
 Process all directives in order.
 
+### Step 13: Identify Modified Files (Required)
+
+For each implementation step, predict which files will be modified. This enables safe parallel execution by detecting file conflicts between steps.
+
+**Why This Matters:**
+When multiple steps run in parallel, they may try to modify the same file, causing overwrites. By declaring `modifies` upfront, the executor can:
+- Run non-conflicting steps in parallel
+- Serialize conflicting steps automatically
+- Warn about potential merge issues
+
+**Identification Strategies:**
+
+| Feature Type | Typical Files Modified |
+|--------------|------------------------|
+| UI component | `index.html`, component JS, CSS |
+| API endpoint | `handlers.go`, routes, types |
+| State change | `app.js`, store, state files |
+| Config change | Config files, constants |
+| Test addition | Test files in e2e/tests dir |
+
+**Heuristics for File Prediction:**
+
+1. **Keyword Mapping:**
+   - "button", "modal", "form" → HTML, component JS
+   - "endpoint", "handler", "API" → backend handlers, routes
+   - "state", "store" → state management files
+   - "style", "theme" → CSS, style files
+
+2. **Project Part Inference:**
+   - `projectParts: [client]` → files in client directory
+   - `projectParts: [api]` → files in api directory
+   - `projectParts: [test]` → files in test directory
+
+3. **Instruction Analysis:**
+   - "modify X component" → X component file
+   - "add to Y" → Y file
+   - "update Z handler" → Z handler file
+
+4. **Pattern Recognition:**
+   - Similar past features → similar file patterns
+   - Existing artifacts may document file locations
+
+**When Uncertain:**
+- Use broader estimates (list all potentially modified files)
+- Mark as `# estimated` in comments
+- The executor will treat missing `modifies` conservatively
+
+**Example Analysis:**
+
+```
+Feature: "add download button to fullscreen view"
+
+Analysis:
+- "fullscreen view" → likely in fullscreen-related component
+- "button" → UI element, needs HTML/JS
+- "download" → may need click handler
+
+Predicted modifies:
+- client/fullscreen-viewer.js (UI component)
+- client/index.html (if HTML changes needed)
+- client/styles.css (if button styling needed)
+```
+
+**Output Format:**
+
+```yaml
+suggestedSteps:
+  - id: impl_download
+    instruction: "implement download button in fullscreen view"
+    projectParts: [client]
+    modifies:
+      - client/fullscreen-viewer.js
+      - client/index.html
+```
+
+**Conflict Detection in Brief:**
+
+After generating all steps, scan for conflicts:
+
+```
+Analyzing file conflicts...
+
+⚠️ Conflict detected:
+  - impl_ui_polish modifies: [client/app.js]
+  - impl_scroll_button modifies: [client/app.js]
+  → These steps cannot run in parallel
+
+Recommendation: Add dependency or serialize execution
+```
+
 ## Questions to Ask
 
 ### Project Parts Discovery
@@ -356,22 +447,35 @@ milestones:
         instruction: "analyze current fullscreen view implementation"
         produces: fullscreen_analysis  # Creates new artifact
         projectParts: [client]
+        # Analysis steps typically don't modify files
       - id: impl_download
         instruction: "implement download button in fullscreen view"
         requires: [fullscreen_analysis]  # Uses the artifact
         dependsOn: [analyze_fullscreen]
         projectParts: [client]
+        modifies:
+          - client/fullscreen-viewer.js
+          - client/index.html
       - id: impl_zoom
         instruction: "implement pinch/scroll zoom with viewport controls"
         requires: [fullscreen_analysis]
         dependsOn: [analyze_fullscreen]
         projectParts: [client]
+        modifies:
+          - client/fullscreen-viewer.js  # Conflict with impl_download!
+          - client/touch-handlers.js
       - id: test_fullscreen
         instruction: "write tests for fullscreen view enhancements"
         dependsOn: [impl_download, impl_zoom]
         projectParts: [test]
+        modifies:
+          - client/e2e/fullscreen.spec.ts
     dependsOn: []
     notes: "User chose to group all fullscreen items together"
+    fileConflicts:
+      - files: [client/fullscreen-viewer.js]
+        steps: [impl_download, impl_zoom]
+        resolution: "Sequential execution required"
 
   - id: codemirror_prompt_ide
     name: "CodeMirror Prompt IDE"
@@ -504,6 +608,8 @@ Before outputting, verify:
 - [ ] All detected project parts have paths (or are marked as registry updates)
 - [ ] Analysis steps use `produces` for reusable insights
 - [ ] Implementation steps use `requires` where applicable
+- [ ] **Implementation steps have `modifies` field populated**
+- [ ] **File conflicts between parallel steps are identified**
 - [ ] Large groupings have been addressed (grouped or split)
 - [ ] Dependencies between milestones are identified
 - [ ] "Needs planning" items are flagged appropriately

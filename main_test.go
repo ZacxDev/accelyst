@@ -931,3 +931,146 @@ func TestConvertYAMLToJSON_Array(t *testing.T) {
 		t.Errorf("expected 'value', got %v", m["key"])
 	}
 }
+
+// ============================================
+// Modifies Field Tests
+// ============================================
+
+func TestLoadEpic_WithModifies(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupTestDir(t, dir)
+
+	epic := `name: "Test Epic"
+milestones:
+  - id: m1
+    name: "Milestone One"
+    steps:
+      - id: impl_feature
+        instruction: "implement feature"
+        modifies:
+          - client/app.js
+          - client/index.html
+`
+	writeFile(t, filepath.Join(dir, ".accelyst", "epics", "test.yaml"), epic)
+
+	e, err := loadEpic(dir, "test")
+	if err != nil {
+		t.Fatalf("loadEpic failed: %v", err)
+	}
+
+	step := e.Milestones[0].Steps[0]
+	if len(step.Modifies) != 2 {
+		t.Errorf("len(Modifies) = %d, want 2", len(step.Modifies))
+	}
+	if step.Modifies[0] != "client/app.js" {
+		t.Errorf("Modifies[0] = %q, want %q", step.Modifies[0], "client/app.js")
+	}
+	if step.Modifies[1] != "client/index.html" {
+		t.Errorf("Modifies[1] = %q, want %q", step.Modifies[1], "client/index.html")
+	}
+}
+
+func TestGeneratePromptFragment_WithModifies(t *testing.T) {
+	step := Step{
+		ID:          "impl_download",
+		Instruction: "implement download button",
+		Modifies:    []string{"client/viewer.js", "client/index.html"},
+	}
+
+	result := generatePromptFragment(step, nil, "/tmp")
+
+	if !strings.Contains(result, "[modifies: client/viewer.js, client/index.html]") {
+		t.Errorf("Expected modifies clause in output, got: %s", result)
+	}
+}
+
+func TestGeneratePromptFragment_NoModifies(t *testing.T) {
+	step := Step{
+		ID:          "analyze",
+		Instruction: "analyze component",
+	}
+
+	result := generatePromptFragment(step, nil, "/tmp")
+
+	if strings.Contains(result, "[modifies:") {
+		t.Errorf("Step without modifies should not have modifies clause, got: %s", result)
+	}
+}
+
+func TestGeneratePromptFragment_EmptyModifies(t *testing.T) {
+	step := Step{
+		ID:          "analyze",
+		Instruction: "analyze component",
+		Modifies:    []string{},
+	}
+
+	result := generatePromptFragment(step, nil, "/tmp")
+
+	if strings.Contains(result, "[modifies:") {
+		t.Errorf("Step with empty modifies should not have modifies clause, got: %s", result)
+	}
+}
+
+func TestGeneratePromptFragment_FullStep(t *testing.T) {
+	step := Step{
+		ID:           "impl_feature",
+		Instruction:  "implement the feature",
+		ProjectParts: []string{"client"},
+		DependsOn:    []string{"analyze_step"},
+		Modifies:     []string{"client/app.js"},
+	}
+
+	projectParts := map[string]ProjectPart{
+		"client": {Name: "client", DirectoryAbs: "/path/to/client"},
+	}
+
+	result := generatePromptFragment(step, projectParts, "/tmp")
+
+	// Should have project parts
+	if !strings.Contains(result, "Analyze client") {
+		t.Errorf("Expected project parts, got: %s", result)
+	}
+	// Should have dependencies
+	if !strings.Contains(result, "read results from steps analyze_step") {
+		t.Errorf("Expected dependencies, got: %s", result)
+	}
+	// Should have modifies at the end
+	if !strings.Contains(result, "[modifies: client/app.js]") {
+		t.Errorf("Expected modifies clause, got: %s", result)
+	}
+	// Should NOT have subagent prefix (has dependencies)
+	if strings.Contains(result, "use a subagent to") {
+		t.Errorf("Step with dependencies should not have subagent prefix, got: %s", result)
+	}
+}
+
+func TestProcessMilestone_WithModifies(t *testing.T) {
+	milestone := Milestone{
+		ID:   "test",
+		Name: "Test",
+		Steps: []Step{
+			{ID: "analyze", Instruction: "analyze"},
+			{
+				ID:          "impl",
+				Instruction: "implement",
+				DependsOn:   []string{"analyze"},
+				Modifies:    []string{"app.js", "config.js"},
+			},
+		},
+	}
+
+	result, err := processMilestone(milestone, nil, "/tmp")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Analyze step should not have modifies
+	if strings.Contains(result, "analyze: use a subagent to analyze [modifies:") {
+		t.Errorf("Analyze step should not have modifies clause")
+	}
+
+	// Impl step should have modifies
+	if !strings.Contains(result, "[modifies: app.js, config.js]") {
+		t.Errorf("Impl step should have modifies clause, got: %s", result)
+	}
+}

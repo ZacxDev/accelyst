@@ -140,6 +140,7 @@ Defines a single action within a milestone.
 | `projectParts` | `string[]` | No | Project part names relevant to this step |
 | `produces` | `string` | No | Artifact ID this step creates |
 | `requires` | `string[]` | No | Artifact IDs this step needs as context |
+| `modifies` | `string[]` | No | File paths this step will modify (for concurrency safety) |
 
 **Constraints:**
 - `id` must be unique within the milestone
@@ -149,6 +150,7 @@ Defines a single action within a milestone.
 - `projectParts` must reference valid project part names in registry
 - `produces` must be unique across all epics and not exist in registry
 - `requires` must reference artifacts in registry or `produces` from earlier steps
+- `modifies` paths should be relative to project root
 
 ### Epic Example
 
@@ -171,11 +173,16 @@ milestones:
         instruction: "implement download button"
         dependsOn: [analyze_fullscreen]
         projectParts: [client]
+        modifies:
+          - client/fullscreen-viewer.js
+          - client/index.html
 
       - id: test_download
         instruction: "write tests for download functionality"
         dependsOn: [impl_download]
         projectParts: [test]
+        modifies:
+          - client/e2e/fullscreen.spec.ts
 
   - id: fullscreen_zoom
     name: "Zoom Controls"
@@ -253,12 +260,36 @@ Steps with `requires` must have their artifacts available:
 - From registry (prior iterations)
 - From `produces` in earlier step (same or dependent milestone)
 
+### Concurrency Safety
+
+The `modifies` field enables safe parallel execution by declaring which files a step will change.
+
+**Conflict Detection:**
+```
+Step A: modifies: [app.js, config.js]
+Step B: modifies: [app.js, utils.js]
+Step C: modifies: [types.ts]
+
+Conflict: A and B both modify app.js
+Safe to parallel: A/B with C (no overlap)
+```
+
+**Scheduling Rules:**
+1. Steps with overlapping `modifies` must execute sequentially
+2. Steps with disjoint `modifies` can execute in parallel
+3. Steps without `modifies` are treated as potentially modifying any file (conservative)
+
+**When to Populate:**
+- Implementation steps should always declare `modifies`
+- Analysis steps (with `produces`) typically don't modify files
+- Test steps should declare new test files they create
+
 ### Prompt Generation
 
 For each step, a prompt fragment is generated:
 
 ```
-<id>: [subagent prefix] [project parts clause] [requires clause] [dependencies clause] <instruction>
+<id>: [subagent prefix] [project parts clause] [requires clause] [dependencies clause] <instruction> [modifies clause]
 ```
 
 **Components:**
@@ -291,7 +322,12 @@ For each step, a prompt fragment is generated:
    Save analysis to: .accelyst/artifacts/<id>.md
    ```
 
-6. **Instruction**: The `instruction` field value
+6. **Modifies clause** (if modifies specified):
+   ```
+   [modifies: <file1>, <file2>, ...]
+   ```
+
+7. **Instruction**: The `instruction` field value
 
 ---
 
@@ -314,13 +350,13 @@ Include: component locations, state management, key interfaces, extension points
 
 ## Step: impl_download
 
-Analyze client (/home/user/project/client) then read results from steps analyze_fullscreen then implement download button
+Analyze client (/home/user/project/client) then read results from steps analyze_fullscreen then implement download button [modifies: client/fullscreen-viewer.js, client/index.html]
 
 ---
 
 ## Step: test_download
 
-Analyze test (/home/user/project/tests) then read results from steps impl_download then write tests for download functionality
+Analyze test (/home/user/project/tests) then read results from steps impl_download then write tests for download functionality [modifies: client/e2e/fullscreen.spec.ts]
 
 ---
 
@@ -459,6 +495,10 @@ accelyst registry add-artifact <id> <description> <producedBy>
                 "requires": {
                   "type": "array",
                   "items": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" }
+                },
+                "modifies": {
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 }
                 }
               }
             }

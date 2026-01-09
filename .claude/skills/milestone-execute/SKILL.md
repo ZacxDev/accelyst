@@ -111,14 +111,34 @@ See [accelyst-guide](../accelyst-guide/SKILL.md) for detailed CLI patterns.
 
 1. **Topological sort milestones** by `dependsOn` field
 2. **For each milestone, topological sort steps** by `dependsOn`
-3. **Identify parallel groups** - steps with no mutual dependencies
-4. **Create TodoWrite items** for visibility
+3. **Detect file conflicts** - steps with overlapping `modifies` arrays
+4. **Identify parallel groups** - steps with no dependencies AND no file conflicts
+5. **Create TodoWrite items** for visibility
+
+**File Conflict Detection:**
+```
+Step A: modifies: [app.js, config.js]
+Step B: modifies: [app.js, utils.js]
+Step C: modifies: [types.ts]
+
+Conflict: A ∩ B = {app.js} → Cannot run in parallel
+Safe: (A or B) with C → No overlap, can parallelize
+```
+
+**Conflict Resolution:**
+- If steps have overlapping `modifies`, add implicit dependency (execute sequentially)
+- If step has no `modifies` field, treat conservatively (assume may modify any file)
+- Log detected conflicts for user visibility
 
 ```
 TodoWrite items:
 - [ ] auth_api/analyze_auth (produces: auth_analysis)
 - [ ] auth_api/implement (requires: auth_analysis)
 - [ ] auth_api/test_auth
+
+File conflicts detected:
+- impl_ui_polish ↔ impl_scroll_button (both modify: app.js)
+  → Will execute sequentially
 ```
 
 ### Phase 3: Execute Steps
@@ -390,16 +410,23 @@ When steps have no dependencies on each other:
 ```
 Execution Plan for: generator_and_ui_polish
 
-Parallel Group 1 (no dependencies):
+Parallel Group 1 (analysis - no file modifications):
   - generator_optimize_history/analyze_optimize_call
   - generator_ui_polish/analyze_generator_ui
   - instruction_btn_polish/analyze_instruction_btn
 
-Sequential (after group 1):
-  - generator_optimize_history/impl_history_limit
-  - generator_ui_polish/hide_start_when_generating
-  - instruction_btn_polish/reduce_padding
-  ...
+File Conflict Analysis for Implementation Steps:
+  - impl_history_limit: modifies [prompt-pipeline.js]
+  - impl_ui_polish: modifies [app.js, instruction-buttons.js]
+  - impl_scroll_button: modifies [app.js, index.html]
+
+  ⚠️ Conflict: impl_ui_polish ↔ impl_scroll_button (both modify: app.js)
+
+Parallel Group 2 (no conflicts):
+  - impl_history_limit (modifies: prompt-pipeline.js)
+
+Sequential Group (file conflict on app.js):
+  - impl_ui_polish → impl_scroll_button
 
 Executing Parallel Group 1:
   [Task: analyze_optimize_call, background: true] → task_1
@@ -412,7 +439,102 @@ Executing Parallel Group 1:
   ✓ task_3 complete (produced: instruction_btn_analysis)
 
 All analysis steps complete. Proceeding to implementation...
+
+Executing impl_history_limit (parallel - no conflicts):
+  [Task: impl_history_limit, background: true] → task_4
+
+Executing impl_ui_polish (sequential due to app.js conflict):
+  [Task: impl_ui_polish] → task_5
+  ✓ Complete
+
+Executing impl_scroll_button (after impl_ui_polish - file conflict resolved):
+  [Task: impl_scroll_button] → task_6
+  ✓ Complete
+
+Checking parallel task:
+  ✓ task_4 complete (impl_history_limit)
+
+All implementation steps complete.
 ```
+
+## File Conflict Detection Algorithm
+
+When building the execution plan, detect file conflicts to ensure safe parallel execution:
+
+```python
+def detect_conflicts(steps):
+    """
+    Returns list of (step_a, step_b, conflicting_files) tuples
+    """
+    conflicts = []
+
+    for i, step_a in enumerate(steps):
+        for step_b in steps[i+1:]:
+            # Skip if already has dependency relationship
+            if step_b.id in step_a.dependsOn or step_a.id in step_b.dependsOn:
+                continue
+
+            # Get modifies sets (empty = conservative, treat as wildcard)
+            files_a = set(step_a.modifies or [])
+            files_b = set(step_b.modifies or [])
+
+            # If either has no modifies, can't safely parallelize
+            if not files_a or not files_b:
+                conflicts.append((step_a, step_b, ["<unknown>"]))
+                continue
+
+            # Check for intersection
+            overlap = files_a & files_b
+            if overlap:
+                conflicts.append((step_a, step_b, list(overlap)))
+
+    return conflicts
+
+def build_execution_groups(steps, conflicts):
+    """
+    Build parallel execution groups respecting conflicts
+    """
+    # Start with topologically sorted steps
+    remaining = set(s.id for s in steps)
+    groups = []
+
+    while remaining:
+        # Find steps with no remaining dependencies
+        ready = [s for s in steps
+                 if s.id in remaining
+                 and all(d not in remaining for d in s.dependsOn)]
+
+        # Split ready steps by conflicts
+        parallel_group = []
+        sequential_queue = []
+
+        for step in ready:
+            conflicts_with_group = any(
+                (step, other) in conflicts or (other, step) in conflicts
+                for other in parallel_group
+            )
+
+            if conflicts_with_group:
+                sequential_queue.append(step)
+            else:
+                parallel_group.append(step)
+
+        groups.append({
+            'parallel': parallel_group,
+            'sequential': sequential_queue
+        })
+
+        for s in parallel_group + sequential_queue:
+            remaining.remove(s.id)
+
+    return groups
+```
+
+**Key Rules:**
+1. Steps with `dependsOn` relationships are already ordered
+2. Steps with overlapping `modifies` get implicit sequential ordering
+3. Steps with empty `modifies` are treated conservatively (no parallelization)
+4. Analysis steps (with `produces`) typically have no `modifies` and can parallelize
 
 ## Quality Checks
 
@@ -422,6 +544,7 @@ All analysis steps complete. Proceeding to implementation...
 - [ ] All projectParts in steps exist in registry
 - [ ] No circular dependencies in step DAG
 - [ ] All `requires` artifacts exist or will be produced
+- [ ] **File conflicts detected and logged**
 
 **After each step:**
 - [ ] Subagent completed without critical error

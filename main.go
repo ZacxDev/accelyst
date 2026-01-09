@@ -49,6 +49,7 @@ type Step struct {
 	ProjectParts []string `yaml:"projectParts,omitempty"`
 	Produces     string   `yaml:"produces,omitempty"`
 	Requires     []string `yaml:"requires,omitempty"`
+	Modifies     []string `yaml:"modifies,omitempty"`
 }
 
 // Milestone represents a collection of steps working toward a goal
@@ -150,6 +151,10 @@ const epicSchema = `{
                 },
                 "produces": { "type": "string" },
                 "requires": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "modifies": {
                   "type": "array",
                   "items": { "type": "string" }
                 }
@@ -544,6 +549,11 @@ func generatePromptFragment(step Step, projectParts map[string]ProjectPart, base
 
 	// Add instruction
 	parts = append(parts, step.Instruction)
+
+	// Add modifies clause
+	if len(step.Modifies) > 0 {
+		parts = append(parts, fmt.Sprintf("[modifies: %s]", strings.Join(step.Modifies, ", ")))
+	}
 
 	return strings.Join(parts, " ")
 }
