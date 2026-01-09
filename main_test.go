@@ -1,94 +1,385 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
 
 // ============================================
-// Schema Validation Tests
+// Test Helpers
 // ============================================
 
-func TestValidateConfig_Valid(t *testing.T) {
-	yaml := `
+func setupTestDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "accelyst-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	return dir
+}
+
+func cleanupTestDir(t *testing.T, dir string) {
+	t.Helper()
+	os.RemoveAll(dir)
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatalf("Failed to create directory %s: %v", dir, err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("Failed to write file %s: %v", path, err)
+	}
+}
+
+// ============================================
+// Registry Tests
+// ============================================
+
+func TestLoadRegistry_Valid(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupTestDir(t, dir)
+
+	registry := `version: 1
 projectParts:
   - name: client
     directoryAbs: /path/to/client
+  - name: api
+    directoryAbs: /path/to/api
+artifacts:
+  - id: auth_flow
+    description: "Authentication flow analysis"
+    producedBy: "epic/milestone/step"
+    createdAt: "2024-01-08"
+`
+	writeFile(t, filepath.Join(dir, ".accelyst", "registry.yaml"), registry)
 
+	reg, err := loadRegistry(dir)
+	if err != nil {
+		t.Fatalf("loadRegistry failed: %v", err)
+	}
+
+	if reg.Version != 1 {
+		t.Errorf("Version = %d, want 1", reg.Version)
+	}
+	if len(reg.ProjectParts) != 2 {
+		t.Errorf("len(ProjectParts) = %d, want 2", len(reg.ProjectParts))
+	}
+	if len(reg.Artifacts) != 1 {
+		t.Errorf("len(Artifacts) = %d, want 1", len(reg.Artifacts))
+	}
+	if reg.Artifacts[0].ID != "auth_flow" {
+		t.Errorf("Artifacts[0].ID = %q, want %q", reg.Artifacts[0].ID, "auth_flow")
+	}
+}
+
+func TestLoadRegistry_MissingVersion(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupTestDir(t, dir)
+
+	registry := `projectParts:
+  - name: client
+    directoryAbs: /path/to/client
+`
+	writeFile(t, filepath.Join(dir, ".accelyst", "registry.yaml"), registry)
+
+	_, err := loadRegistry(dir)
+	if err == nil {
+		t.Error("Expected error for missing version, got nil")
+	}
+}
+
+func TestLoadRegistry_MissingProjectParts(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupTestDir(t, dir)
+
+	registry := `version: 1
+`
+	writeFile(t, filepath.Join(dir, ".accelyst", "registry.yaml"), registry)
+
+	_, err := loadRegistry(dir)
+	if err == nil {
+		t.Error("Expected error for missing projectParts, got nil")
+	}
+}
+
+// ============================================
+// Epic Tests
+// ============================================
+
+func TestLoadEpic_Valid(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupTestDir(t, dir)
+
+	epic := `name: "Test Epic"
+description: "A test epic"
+priority: ready
 milestones:
-  - id: test
-    name: "Test Milestone"
+  - id: milestone_1
+    name: "Milestone One"
     steps:
-      - id: step1
+      - id: step_1
         instruction: "do something"
 `
-	if err := validateConfig([]byte(yaml)); err != nil {
-		t.Errorf("expected valid config, got error: %v", err)
+	writeFile(t, filepath.Join(dir, ".accelyst", "epics", "test.yaml"), epic)
+
+	e, err := loadEpic(dir, "test")
+	if err != nil {
+		t.Fatalf("loadEpic failed: %v", err)
+	}
+
+	if e.Name != "Test Epic" {
+		t.Errorf("Name = %q, want %q", e.Name, "Test Epic")
+	}
+	if e.Priority != "ready" {
+		t.Errorf("Priority = %q, want %q", e.Priority, "ready")
+	}
+	if len(e.Milestones) != 1 {
+		t.Errorf("len(Milestones) = %d, want 1", len(e.Milestones))
 	}
 }
 
-func TestValidateConfig_MissingMilestoneID(t *testing.T) {
-	yaml := `
-projectParts:
-  - name: client
-    directoryAbs: /path/to/client
+func TestLoadEpic_InvalidPriority(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupTestDir(t, dir)
 
+	epic := `name: "Test Epic"
+priority: invalid_priority
 milestones:
-  - name: "Missing ID"
+  - id: m1
+    name: "M1"
     steps:
-      - id: step1
-        instruction: "do something"
+      - id: s1
+        instruction: "do"
 `
-	err := validateConfig([]byte(yaml))
+	writeFile(t, filepath.Join(dir, ".accelyst", "epics", "test.yaml"), epic)
+
+	_, err := loadEpic(dir, "test")
 	if err == nil {
-		t.Error("expected error for missing milestone id")
-	}
-	if !strings.Contains(err.Error(), "id is required") {
-		t.Errorf("expected 'id is required' error, got: %v", err)
+		t.Error("Expected error for invalid priority, got nil")
 	}
 }
 
-func TestValidateConfig_MissingStepInstruction(t *testing.T) {
-	yaml := `
-projectParts:
-  - name: client
-    directoryAbs: /path/to/client
+func TestLoadEpics_Multiple(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupTestDir(t, dir)
 
+	epic1 := `name: "Epic One"
 milestones:
-  - id: test
-    name: "Test"
+  - id: m1
+    name: "M1"
     steps:
-      - id: step1
+      - id: s1
+        instruction: "do"
 `
-	err := validateConfig([]byte(yaml))
-	if err == nil {
-		t.Error("expected error for missing instruction")
-	}
-	if !strings.Contains(err.Error(), "instruction is required") {
-		t.Errorf("expected 'instruction is required' error, got: %v", err)
-	}
-}
-
-func TestValidateConfig_EmptySteps(t *testing.T) {
-	yaml := `
-projectParts:
-  - name: client
-    directoryAbs: /path/to/client
-
+	epic2 := `name: "Epic Two"
 milestones:
-  - id: test
-    name: "Test"
-    steps: []
+  - id: m2
+    name: "M2"
+    steps:
+      - id: s2
+        instruction: "do"
 `
-	err := validateConfig([]byte(yaml))
-	if err == nil {
-		t.Error("expected error for empty steps")
+	writeFile(t, filepath.Join(dir, ".accelyst", "epics", "one.yaml"), epic1)
+	writeFile(t, filepath.Join(dir, ".accelyst", "epics", "two.yaml"), epic2)
+
+	epics, err := loadEpics(dir)
+	if err != nil {
+		t.Fatalf("loadEpics failed: %v", err)
 	}
-	if !strings.Contains(err.Error(), "at least 1 items") {
-		t.Errorf("expected 'at least 1 items' error, got: %v", err)
+
+	if len(epics) != 2 {
+		t.Errorf("len(epics) = %d, want 2", len(epics))
 	}
 }
 
+// ============================================
+// Validation Tests
+// ============================================
+
+func TestValidateEpicReferences_ValidProjectParts(t *testing.T) {
+	registry := &Registry{
+		Version: 1,
+		ProjectParts: []ProjectPart{
+			{Name: "client", DirectoryAbs: "/path/to/client"},
+			{Name: "api", DirectoryAbs: "/path/to/api"},
+		},
+	}
+
+	epic := &Epic{
+		filename: "test",
+		Milestones: []Milestone{
+			{
+				ID:   "m1",
+				Name: "M1",
+				Steps: []Step{
+					{ID: "s1", Instruction: "do", ProjectParts: []string{"client"}},
+				},
+			},
+		},
+	}
+
+	err := validateEpicReferences(epic, registry, "/tmp")
+	if err != nil {
+		t.Errorf("validateEpicReferences failed: %v", err)
+	}
+}
+
+func TestValidateEpicReferences_InvalidProjectPart(t *testing.T) {
+	registry := &Registry{
+		Version: 1,
+		ProjectParts: []ProjectPart{
+			{Name: "client", DirectoryAbs: "/path/to/client"},
+		},
+	}
+
+	epic := &Epic{
+		filename: "test",
+		Milestones: []Milestone{
+			{
+				ID:   "m1",
+				Name: "M1",
+				Steps: []Step{
+					{ID: "s1", Instruction: "do", ProjectParts: []string{"unknown"}},
+				},
+			},
+		},
+	}
+
+	err := validateEpicReferences(epic, registry, "/tmp")
+	if err == nil {
+		t.Error("Expected error for unknown project part, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown project part") {
+		t.Errorf("Error message %q should contain 'unknown project part'", err.Error())
+	}
+}
+
+func TestValidateEpicReferences_DuplicateProduces(t *testing.T) {
+	registry := &Registry{
+		Version: 1,
+		ProjectParts: []ProjectPart{
+			{Name: "client", DirectoryAbs: "/path/to/client"},
+		},
+	}
+
+	epic := &Epic{
+		filename: "test",
+		Milestones: []Milestone{
+			{
+				ID:   "m1",
+				Name: "M1",
+				Steps: []Step{
+					{ID: "s1", Instruction: "do", Produces: "artifact_a"},
+					{ID: "s2", Instruction: "do", Produces: "artifact_a"},
+				},
+			},
+		},
+	}
+
+	err := validateEpicReferences(epic, registry, "/tmp")
+	if err == nil {
+		t.Error("Expected error for duplicate produces, got nil")
+	}
+	if !strings.Contains(err.Error(), "produced by both") {
+		t.Errorf("Error message %q should contain 'produced by both'", err.Error())
+	}
+}
+
+func TestValidateEpicReferences_ProducesExistsInRegistry(t *testing.T) {
+	registry := &Registry{
+		Version: 1,
+		ProjectParts: []ProjectPart{
+			{Name: "client", DirectoryAbs: "/path/to/client"},
+		},
+		Artifacts: []Artifact{
+			{ID: "existing_artifact", Description: "exists", ProducedBy: "old/m/s", CreatedAt: "2024-01-01"},
+		},
+	}
+
+	epic := &Epic{
+		filename: "test",
+		Milestones: []Milestone{
+			{
+				ID:   "m1",
+				Name: "M1",
+				Steps: []Step{
+					{ID: "s1", Instruction: "do", Produces: "existing_artifact"},
+				},
+			},
+		},
+	}
+
+	err := validateEpicReferences(epic, registry, "/tmp")
+	if err == nil {
+		t.Error("Expected error for artifact already in registry, got nil")
+	}
+	if !strings.Contains(err.Error(), "already exists in registry") {
+		t.Errorf("Error message %q should contain 'already exists in registry'", err.Error())
+	}
+}
+
+func TestValidateEpicReferences_RequiresFromProduces(t *testing.T) {
+	registry := &Registry{
+		Version: 1,
+		ProjectParts: []ProjectPart{
+			{Name: "client", DirectoryAbs: "/path/to/client"},
+		},
+	}
+
+	epic := &Epic{
+		filename: "test",
+		Milestones: []Milestone{
+			{
+				ID:   "m1",
+				Name: "M1",
+				Steps: []Step{
+					{ID: "s1", Instruction: "analyze", Produces: "analysis"},
+					{ID: "s2", Instruction: "use", Requires: []string{"analysis"}, DependsOn: []string{"s1"}},
+				},
+			},
+		},
+	}
+
+	err := validateEpicReferences(epic, registry, "/tmp")
+	if err != nil {
+		t.Errorf("validateEpicReferences failed: %v", err)
+	}
+}
+
+func TestValidateEpicReferences_RequiresUnknown(t *testing.T) {
+	registry := &Registry{
+		Version: 1,
+		ProjectParts: []ProjectPart{
+			{Name: "client", DirectoryAbs: "/path/to/client"},
+		},
+	}
+
+	epic := &Epic{
+		filename: "test",
+		Milestones: []Milestone{
+			{
+				ID:   "m1",
+				Name: "M1",
+				Steps: []Step{
+					{ID: "s1", Instruction: "use", Requires: []string{"nonexistent"}},
+				},
+			},
+		},
+	}
+
+	err := validateEpicReferences(epic, registry, "/tmp")
+	if err == nil {
+		t.Error("Expected error for unknown requires, got nil")
+	}
+	if !strings.Contains(err.Error(), "unknown artifact") {
+		t.Errorf("Error message %q should contain 'unknown artifact'", err.Error())
+	}
+}
 
 // ============================================
 // Topological Sort Tests - Steps
@@ -96,9 +387,9 @@ milestones:
 
 func TestTopologicalSort_NoDependencies(t *testing.T) {
 	steps := []Step{
+		{ID: "c", Instruction: "do c"},
 		{ID: "a", Instruction: "do a"},
 		{ID: "b", Instruction: "do b"},
-		{ID: "c", Instruction: "do c"},
 	}
 
 	sorted, err := topologicalSort(steps)
@@ -108,6 +399,11 @@ func TestTopologicalSort_NoDependencies(t *testing.T) {
 
 	if len(sorted) != 3 {
 		t.Errorf("expected 3 steps, got %d", len(sorted))
+	}
+
+	// All have no dependencies, should be sorted alphabetically
+	if sorted[0].ID != "a" || sorted[1].ID != "b" || sorted[2].ID != "c" {
+		t.Errorf("Expected alphabetical order, got: %s, %s, %s", sorted[0].ID, sorted[1].ID, sorted[2].ID)
 	}
 }
 
@@ -272,7 +568,7 @@ func TestGeneratePromptFragment_Basic(t *testing.T) {
 		Instruction: "do something",
 	}
 
-	result := generatePromptFragment(step, nil)
+	result := generatePromptFragment(step, nil, "/tmp")
 	expected := "test: use a subagent to do something"
 
 	if result != expected {
@@ -287,7 +583,7 @@ func TestGeneratePromptFragment_WithDependencies(t *testing.T) {
 		DependsOn:   []string{"step1", "step2"},
 	}
 
-	result := generatePromptFragment(step, nil)
+	result := generatePromptFragment(step, nil, "/tmp")
 
 	if strings.Contains(result, "use a subagent to") {
 		t.Error("step with dependencies should not have subagent prefix")
@@ -308,7 +604,7 @@ func TestGeneratePromptFragment_WithProjectParts(t *testing.T) {
 		"client": {Name: "client", DirectoryAbs: "/path/to/client"},
 	}
 
-	result := generatePromptFragment(step, projectParts)
+	result := generatePromptFragment(step, projectParts, "/tmp")
 
 	if !strings.Contains(result, "Analyze client (/path/to/client)") {
 		t.Errorf("expected project part analysis, got: %s", result)
@@ -326,13 +622,79 @@ func TestGeneratePromptFragment_WithDocumentation(t *testing.T) {
 		"client": {Name: "client", DirectoryAbs: "/path/to/client", DocumentationAbs: "/path/to/docs.md"},
 	}
 
-	result := generatePromptFragment(step, projectParts)
+	result := generatePromptFragment(step, projectParts, "/tmp")
 
 	if !strings.Contains(result, "(docs: /path/to/docs.md)") {
 		t.Errorf("expected documentation path, got: %s", result)
 	}
 }
 
+func TestGenerateProducesSuffix_NoProduces(t *testing.T) {
+	step := Step{
+		ID:          "impl",
+		Instruction: "implement",
+	}
+
+	suffix := generateProducesSuffix(step)
+
+	if suffix != "" {
+		t.Errorf("Expected empty suffix for step without produces, got %q", suffix)
+	}
+}
+
+func TestGenerateProducesSuffix_WithProduces(t *testing.T) {
+	step := Step{
+		ID:          "analyze",
+		Instruction: "analyze",
+		Produces:    "analysis_output",
+	}
+
+	suffix := generateProducesSuffix(step)
+
+	if !strings.Contains(suffix, "analysis_output.md") {
+		t.Errorf("Suffix should contain artifact filename, got %q", suffix)
+	}
+	if !strings.Contains(suffix, "Save analysis to:") {
+		t.Errorf("Suffix should contain save instruction, got %q", suffix)
+	}
+}
+
+func TestGenerateRequiresContext_NoRequires(t *testing.T) {
+	step := Step{
+		ID:          "impl",
+		Instruction: "implement",
+	}
+
+	context := generateRequiresContext(step, "/tmp")
+
+	if context != "" {
+		t.Errorf("Expected empty context for step without requires, got %q", context)
+	}
+}
+
+func TestGenerateRequiresContext_WithRequires(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupTestDir(t, dir)
+
+	// Create artifact file
+	artifactContent := "# Analysis\n\nThis is the analysis."
+	writeFile(t, filepath.Join(dir, ".accelyst", "artifacts", "my_analysis.md"), artifactContent)
+
+	step := Step{
+		ID:          "impl",
+		Instruction: "implement",
+		Requires:    []string{"my_analysis"},
+	}
+
+	context := generateRequiresContext(step, dir)
+
+	if !strings.Contains(context, "### Context: my_analysis") {
+		t.Errorf("Context should contain header, got %q", context)
+	}
+	if !strings.Contains(context, "This is the analysis.") {
+		t.Errorf("Context should contain artifact content, got %q", context)
+	}
+}
 
 // ============================================
 // Process Milestone Tests
@@ -348,19 +710,171 @@ func TestProcessMilestone_Basic(t *testing.T) {
 		},
 	}
 
-	result, err := processMilestone(milestone, nil)
+	result, err := processMilestone(milestone, nil, "/tmp")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	lines := strings.Split(result, "\n")
-	if len(lines) != 2 {
-		t.Errorf("expected 2 lines, got %d", len(lines))
+	// Should contain both steps
+	if !strings.Contains(result, "a:") {
+		t.Errorf("expected step a, got: %s", result)
+	}
+	if !strings.Contains(result, "b:") {
+		t.Errorf("expected step b, got: %s", result)
+	}
+}
+
+// ============================================
+// Init Command Tests
+// ============================================
+
+func TestCmdInit_CreatesStructure(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupTestDir(t, dir)
+
+	err := cmdInit(dir)
+	if err != nil {
+		t.Fatalf("cmdInit failed: %v", err)
 	}
 
-	// First line should be step a (no dependencies)
-	if !strings.HasPrefix(lines[0], "a:") {
-		t.Errorf("expected first line to start with 'a:', got: %s", lines[0])
+	// Check registry exists
+	if _, err := os.Stat(filepath.Join(dir, ".accelyst", "registry.yaml")); os.IsNotExist(err) {
+		t.Error("Registry file not created")
+	}
+
+	// Check epics directory exists
+	if _, err := os.Stat(filepath.Join(dir, ".accelyst", "epics")); os.IsNotExist(err) {
+		t.Error("Epics directory not created")
+	}
+
+	// Check artifacts directory exists
+	if _, err := os.Stat(filepath.Join(dir, ".accelyst", "artifacts")); os.IsNotExist(err) {
+		t.Error("Artifacts directory not created")
+	}
+}
+
+func TestCmdInit_AlreadyInitialized(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupTestDir(t, dir)
+
+	// First init should succeed
+	err := cmdInit(dir)
+	if err != nil {
+		t.Fatalf("First cmdInit failed: %v", err)
+	}
+
+	// Second init should fail
+	err = cmdInit(dir)
+	if err == nil {
+		t.Error("Expected error for already initialized, got nil")
+	}
+	if !strings.Contains(err.Error(), "already initialized") {
+		t.Errorf("Error message %q should contain 'already initialized'", err.Error())
+	}
+}
+
+// ============================================
+// Migrate Command Tests
+// ============================================
+
+func TestCmdMigrate_Valid(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupTestDir(t, dir)
+
+	// Create legacy config
+	legacyConfig := `projectParts:
+  - name: client
+    directoryAbs: /path/to/client
+  - name: api
+    directoryAbs: /path/to/api
+milestones:
+  - id: feature_1
+    name: "Feature One"
+    steps:
+      - id: step_1
+        instruction: "do something"
+`
+	configPath := filepath.Join(dir, "accelyst.yaml")
+	writeFile(t, configPath, legacyConfig)
+
+	err := cmdMigrate(dir, configPath)
+	if err != nil {
+		t.Fatalf("cmdMigrate failed: %v", err)
+	}
+
+	// Check registry was created
+	registry, err := loadRegistry(dir)
+	if err != nil {
+		t.Fatalf("Failed to load migrated registry: %v", err)
+	}
+	if len(registry.ProjectParts) != 2 {
+		t.Errorf("len(ProjectParts) = %d, want 2", len(registry.ProjectParts))
+	}
+
+	// Check epic was created
+	epic, err := loadEpic(dir, "default")
+	if err != nil {
+		t.Fatalf("Failed to load migrated epic: %v", err)
+	}
+	if len(epic.Milestones) != 1 {
+		t.Errorf("len(Milestones) = %d, want 1", len(epic.Milestones))
+	}
+
+	// Check backup was created
+	if _, err := os.Stat(configPath + ".bak"); os.IsNotExist(err) {
+		t.Error("Backup file not created")
+	}
+}
+
+// ============================================
+// Artifact Tests
+// ============================================
+
+func TestArtifactExists(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupTestDir(t, dir)
+
+	// Should not exist initially
+	if artifactExists(dir, "test_artifact") {
+		t.Error("Artifact should not exist initially")
+	}
+
+	// Create artifact
+	writeFile(t, filepath.Join(dir, ".accelyst", "artifacts", "test_artifact.md"), "content")
+
+	// Should exist now
+	if !artifactExists(dir, "test_artifact") {
+		t.Error("Artifact should exist after creation")
+	}
+}
+
+func TestLoadArtifact(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupTestDir(t, dir)
+
+	content := "# Test Artifact\n\nThis is test content."
+	writeFile(t, filepath.Join(dir, ".accelyst", "artifacts", "test.md"), content)
+
+	loaded, err := loadArtifact(dir, "test")
+	if err != nil {
+		t.Fatalf("loadArtifact failed: %v", err)
+	}
+
+	if loaded != content {
+		t.Errorf("Content mismatch: got %q, want %q", loaded, content)
+	}
+}
+
+func TestLoadArtifact_NotFound(t *testing.T) {
+	dir := setupTestDir(t)
+	defer cleanupTestDir(t, dir)
+
+	// Create artifacts directory but not the file
+	os.MkdirAll(filepath.Join(dir, ".accelyst", "artifacts"), 0755)
+
+	_, err := loadArtifact(dir, "nonexistent")
+	if err == nil {
+		t.Error("Expected error for nonexistent artifact, got nil")
 	}
 }
 
