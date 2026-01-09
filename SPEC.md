@@ -59,7 +59,6 @@ Defines a single action within a milestone.
 | `instruction` | `string` | Yes | Action to perform |
 | `dependsOn` | `string[]` | No | Step IDs that must complete before this step |
 | `projectParts` | `string[]` | No | Project part names relevant to this step |
-| `tier` | `string` | No | Execution tier: `ai` (autonomous) or `human` (requires human). Defaults to `ai` |
 
 **Constraints:**
 - `id` must be unique within the milestone
@@ -67,11 +66,6 @@ Defines a single action within a milestone.
 - `dependsOn` must reference valid step IDs within the same milestone
 - `dependsOn` must not create circular dependencies
 - `projectParts` must reference valid project part names
-- `tier` must be one of: `ai`, `human`
-
-**Tier Semantics:**
-- `ai`: Step can be fully executed by an AI agent autonomously
-- `human`: Step requires human action (e.g., approvals, external account setup, physical tasks)
 
 ## Execution Semantics
 
@@ -192,7 +186,6 @@ milestones:
         dependsOn:
           - impl_auth_flow
         projectParts: []
-        tier: human
 ```
 
 **Output:**
@@ -216,7 +209,7 @@ impl_sessions: Analyze api (/home/user/project/api) (docs: /home/user/project/do
 
 impl_login_form: use a subagent to Analyze client (/home/user/project/client) then implement login form component
 impl_auth_flow: Analyze client (/home/user/project/client) then read results from steps impl_login_form then implement authentication flow
-configure_oauth_provider: [HUMAN] read results from steps impl_auth_flow then configure OAuth provider credentials in production
+configure_oauth_provider: read results from steps impl_auth_flow then configure OAuth provider credentials in production
 ```
 
 ## JSON Schema
@@ -267,11 +260,6 @@ configure_oauth_provider: [HUMAN] read results from steps impl_auth_flow then co
                 "projectParts": {
                   "type": "array",
                   "items": { "type": "string" }
-                },
-                "tier": {
-                  "type": "string",
-                  "enum": ["ai", "human"],
-                  "default": "ai"
                 }
               }
             }

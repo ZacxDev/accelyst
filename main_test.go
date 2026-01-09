@@ -89,50 +89,6 @@ milestones:
 	}
 }
 
-func TestValidateConfig_InvalidTier(t *testing.T) {
-	yaml := `
-projectParts:
-  - name: client
-    directoryAbs: /path/to/client
-
-milestones:
-  - id: test
-    name: "Test"
-    steps:
-      - id: step1
-        instruction: "do something"
-        tier: invalid
-`
-	err := validateConfig([]byte(yaml))
-	if err == nil {
-		t.Error("expected error for invalid tier")
-	}
-	if !strings.Contains(err.Error(), "must be one of") {
-		t.Errorf("expected 'must be one of' error, got: %v", err)
-	}
-}
-
-func TestValidateConfig_ValidTiers(t *testing.T) {
-	yaml := `
-projectParts:
-  - name: client
-    directoryAbs: /path/to/client
-
-milestones:
-  - id: test
-    name: "Test"
-    steps:
-      - id: step1
-        instruction: "ai task"
-        tier: ai
-      - id: step2
-        instruction: "human task"
-        tier: human
-`
-	if err := validateConfig([]byte(yaml)); err != nil {
-		t.Errorf("expected valid config with tiers, got error: %v", err)
-	}
-}
 
 // ============================================
 // Topological Sort Tests - Steps
@@ -377,57 +333,6 @@ func TestGeneratePromptFragment_WithDocumentation(t *testing.T) {
 	}
 }
 
-func TestGeneratePromptFragment_HumanTier(t *testing.T) {
-	step := Step{
-		ID:          "test",
-		Instruction: "configure oauth",
-		Tier:        "human",
-	}
-
-	result := generatePromptFragment(step, nil)
-
-	if !strings.Contains(result, "[HUMAN]") {
-		t.Errorf("expected [HUMAN] prefix, got: %s", result)
-	}
-	if strings.Contains(result, "use a subagent to") {
-		t.Error("human tier should not have subagent prefix")
-	}
-}
-
-func TestGeneratePromptFragment_AITier(t *testing.T) {
-	step := Step{
-		ID:          "test",
-		Instruction: "do something",
-		Tier:        "ai",
-	}
-
-	result := generatePromptFragment(step, nil)
-
-	if strings.Contains(result, "[HUMAN]") {
-		t.Error("ai tier should not have [HUMAN] prefix")
-	}
-	if !strings.Contains(result, "use a subagent to") {
-		t.Errorf("ai tier with no deps should have subagent prefix, got: %s", result)
-	}
-}
-
-func TestGeneratePromptFragment_HumanTierWithDependencies(t *testing.T) {
-	step := Step{
-		ID:          "test",
-		Instruction: "configure oauth",
-		Tier:        "human",
-		DependsOn:   []string{"prev"},
-	}
-
-	result := generatePromptFragment(step, nil)
-
-	if !strings.Contains(result, "[HUMAN]") {
-		t.Errorf("expected [HUMAN] prefix, got: %s", result)
-	}
-	if !strings.Contains(result, "read results from steps prev") {
-		t.Errorf("expected dependency clause, got: %s", result)
-	}
-}
 
 // ============================================
 // Process Milestone Tests

@@ -25,7 +25,6 @@ type Step struct {
 	Instruction  string   `yaml:"instruction"`
 	DependsOn    []string `yaml:"dependsOn,omitempty"`
 	ProjectParts []string `yaml:"projectParts,omitempty"`
-	Tier         string   `yaml:"tier,omitempty"` // "ai" (default) or "human"
 }
 
 // Milestone represents a collection of steps working toward a goal
@@ -88,10 +87,6 @@ const configSchema = `{
                 "projectParts": {
                   "type": "array",
                   "items": { "type": "string" }
-                },
-                "tier": {
-                  "type": "string",
-                  "enum": ["ai", "human"]
                 }
               }
             }
@@ -294,15 +289,10 @@ func topologicalSortMilestones(milestones []Milestone) ([]Milestone, error) {
 func generatePromptFragment(step Step, projectParts map[string]ProjectPart) string {
 	var parts []string
 
-	// Add tier prefix for human steps
-	if step.Tier == "human" {
-		parts = append(parts, fmt.Sprintf("%s: [HUMAN]", step.ID))
-	} else {
-		parts = append(parts, fmt.Sprintf("%s:", step.ID))
-	}
+	parts = append(parts, fmt.Sprintf("%s:", step.ID))
 
-	// Steps with no dependencies can run in parallel via subagents (only for AI tier)
-	if len(step.DependsOn) == 0 && step.Tier != "human" {
+	// Steps with no dependencies can run in parallel via subagents
+	if len(step.DependsOn) == 0 {
 		parts = append(parts, "use a subagent to")
 	}
 

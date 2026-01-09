@@ -92,4 +92,3 @@ milestones:
         dependsOn:
           - wire_components
         projectParts: []
-        tier: human

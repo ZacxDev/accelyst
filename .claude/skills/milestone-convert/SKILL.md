@@ -68,19 +68,7 @@ milestones:
         dependsOn: []
         projectParts:
           - <component-name>
-        tier: ai                   # optional: "ai" (default) or "human"
 ```
-
-## Tier Guidelines
-
-- **ai** (default): Step can be fully executed by an AI agent autonomously
-- **human**: Step requires human action (approvals, external account setup, physical tasks)
-
-Examples of human-tier steps:
-- Configure OAuth credentials in production console
-- Approve design mockups
-- Purchase domain name
-- Deploy to app store
 
 ## Example Transformation
 
@@ -178,6 +166,5 @@ Before outputting, verify:
 - [ ] Analysis/research steps have no dependencies (parallelizable)
 - [ ] Implementation steps depend on their prerequisites
 - [ ] Instructions are actionable and specific
-- [ ] Human-tier steps are correctly identified (external actions, approvals)
 
 For the complete specification, see [SPEC.md](../../../SPEC.md).
