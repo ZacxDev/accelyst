@@ -44,7 +44,7 @@ Accelyst uses a registry + epics architecture:
 ```yaml
 name: "<Epic Name>"
 description: "<Brief description of this epic>"
-priority: ready  # ready | backlog | blocked
+priority: ready  # ready | in_progress | blocked | ideas
 
 milestones:
   - id: <milestone_id>
@@ -275,3 +275,10 @@ Before outputting, verify:
 - [ ] **Every milestone has at least one step referencing `test`** (REQUIRED)
 
 For the complete specification, see [SPEC.md](../../../SPEC.md).
+
+## Related Skills
+
+- `/milestone-orchestrate` - **Full-cycle**: runs plan → convert → execute automatically
+- `/milestone-plan` - Interactive backlog discovery → planning brief (previous step)
+- `/milestone-execute` - Execute epic via subagents (next step)
+- `/accelyst-guide` - CLI operations and troubleshooting

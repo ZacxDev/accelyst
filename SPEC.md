@@ -369,7 +369,7 @@ accelyst run <epic>/<milestone>/<step>
 # Registry management
 accelyst registry parts
 accelyst registry artifacts
-accelyst registry validate
+accelyst registry add-artifact <id> <description> <producedBy>
 ```
 
 ---
