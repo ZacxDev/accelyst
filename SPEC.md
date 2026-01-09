@@ -59,7 +59,6 @@ Defines a single action within a milestone.
 | `instruction` | `string` | Yes | Action to perform |
 | `dependsOn` | `string[]` | No | Step IDs that must complete before this step |
 | `projectParts` | `string[]` | No | Project part names relevant to this step |
-| `acceptanceCriteria` | `string[]` | No | Conditions that define successful completion |
 | `tier` | `string` | No | Execution tier: `ai` (autonomous) or `human` (requires human). Defaults to `ai` |
 
 **Constraints:**
@@ -148,19 +147,12 @@ milestones:
         instruction: "research JWT best practices"
         dependsOn: []
         projectParts: []
-        acceptanceCriteria:
-          - "documented token expiry strategy"
-          - "documented refresh token approach"
       - id: impl_jwt_service
         instruction: "implement JWT service"
         dependsOn:
           - research_jwt
         projectParts:
           - api
-        acceptanceCriteria:
-          - "JWT generation and validation working"
-          - "unit tests passing"
-        tier: ai
 
   - id: session_management
     name: "Session Management"
@@ -189,27 +181,18 @@ milestones:
         dependsOn: []
         projectParts:
           - client
-        acceptanceCriteria:
-          - "form renders with email and password fields"
-          - "validation errors display correctly"
       - id: impl_auth_flow
         instruction: "implement authentication flow"
         dependsOn:
           - impl_login_form
         projectParts:
           - client
-        acceptanceCriteria:
-          - "login redirects to dashboard on success"
-          - "error states handled gracefully"
       - id: configure_oauth_provider
         instruction: "configure OAuth provider credentials in production"
         dependsOn:
           - impl_auth_flow
         projectParts: []
         tier: human
-        acceptanceCriteria:
-          - "OAuth client ID and secret configured"
-          - "redirect URIs registered"
 ```
 
 **Output:**
@@ -233,6 +216,7 @@ impl_sessions: Analyze api (/home/user/project/api) (docs: /home/user/project/do
 
 impl_login_form: use a subagent to Analyze client (/home/user/project/client) then implement login form component
 impl_auth_flow: Analyze client (/home/user/project/client) then read results from steps impl_login_form then implement authentication flow
+configure_oauth_provider: [HUMAN] read results from steps impl_auth_flow then configure OAuth provider credentials in production
 ```
 
 ## JSON Schema
@@ -283,10 +267,6 @@ impl_auth_flow: Analyze client (/home/user/project/client) then read results fro
                 "projectParts": {
                   "type": "array",
                   "items": { "type": "string" }
-                },
-                "acceptanceCriteria": {
-                  "type": "array",
-                  "items": { "type": "string", "minLength": 1 }
                 },
                 "tier": {
                   "type": "string",

@@ -68,8 +68,6 @@ milestones:
         dependsOn: []
         projectParts:
           - <component-name>
-        acceptanceCriteria:        # optional: conditions that define "done"
-          - "<verifiable condition>"
         tier: ai                   # optional: "ai" (default) or "human"
 ```
 
@@ -180,7 +178,6 @@ Before outputting, verify:
 - [ ] Analysis/research steps have no dependencies (parallelizable)
 - [ ] Implementation steps depend on their prerequisites
 - [ ] Instructions are actionable and specific
-- [ ] Acceptance criteria are verifiable conditions (not vague)
 - [ ] Human-tier steps are correctly identified (external actions, approvals)
 
 For the complete specification, see [SPEC.md](../../../SPEC.md).

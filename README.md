@@ -44,17 +44,12 @@ milestones:
         instruction: "research JWT best practices"
         dependsOn: []
         projectParts: []
-        acceptanceCriteria:
-          - "documented token expiry strategy"
       - id: implement
         instruction: "implement auth endpoints"
         dependsOn:
           - research
         projectParts:
           - server
-        acceptanceCriteria:
-          - "login and logout endpoints working"
-          - "unit tests passing"
 
   - id: auth_ui
     name: "Authentication UI"
@@ -71,8 +66,6 @@ milestones:
         dependsOn:
           - build_form
         tier: human
-        acceptanceCriteria:
-          - "OAuth credentials configured"
 ```
 
 ### Fields
@@ -92,7 +85,6 @@ milestones:
 | `instruction` | Yes | Action to perform |
 | `dependsOn` | No | Step IDs that must complete first |
 | `projectParts` | No | Project parts relevant to this step |
-| `acceptanceCriteria` | No | Conditions that define "done" |
 | `tier` | No | `ai` (default) or `human` |
 
 ### Tier Values

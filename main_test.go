@@ -134,27 +134,6 @@ milestones:
 	}
 }
 
-func TestValidateConfig_AcceptanceCriteria(t *testing.T) {
-	yaml := `
-projectParts:
-  - name: client
-    directoryAbs: /path/to/client
-
-milestones:
-  - id: test
-    name: "Test"
-    steps:
-      - id: step1
-        instruction: "do something"
-        acceptanceCriteria:
-          - "condition 1"
-          - "condition 2"
-`
-	if err := validateConfig([]byte(yaml)); err != nil {
-		t.Errorf("expected valid config with acceptanceCriteria, got error: %v", err)
-	}
-}
-
 // ============================================
 // Topological Sort Tests - Steps
 // ============================================
@@ -395,20 +374,6 @@ func TestGeneratePromptFragment_WithDocumentation(t *testing.T) {
 
 	if !strings.Contains(result, "(docs: /path/to/docs.md)") {
 		t.Errorf("expected documentation path, got: %s", result)
-	}
-}
-
-func TestGeneratePromptFragment_WithAcceptanceCriteria(t *testing.T) {
-	step := Step{
-		ID:                 "test",
-		Instruction:        "do something",
-		AcceptanceCriteria: []string{"condition 1", "condition 2"},
-	}
-
-	result := generatePromptFragment(step, nil)
-
-	if !strings.Contains(result, "[done when: condition 1; condition 2]") {
-		t.Errorf("expected acceptance criteria, got: %s", result)
 	}
 }
 

@@ -81,23 +81,15 @@ milestones:
         dependsOn: []
         projectParts:
           - client
-        acceptanceCriteria:
-          - "API client module created"
-          - "fetch wrapper handles auth headers"
       - id: wire_components
         instruction: "wire UI components to API endpoints"
         dependsOn:
           - impl_api_client
         projectParts:
           - client
-        acceptanceCriteria:
-          - "components fetch data on mount"
-          - "loading and error states handled"
       - id: configure_cors
         instruction: "configure CORS settings in production environment"
         dependsOn:
           - wire_components
         projectParts: []
         tier: human
-        acceptanceCriteria:
-          - "CORS headers configured for production domain"

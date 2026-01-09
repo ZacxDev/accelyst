@@ -21,12 +21,11 @@ type ProjectPart struct {
 
 // Step represents a single action within a milestone
 type Step struct {
-	ID                 string   `yaml:"id"`
-	Instruction        string   `yaml:"instruction"`
-	DependsOn          []string `yaml:"dependsOn,omitempty"`
-	ProjectParts       []string `yaml:"projectParts,omitempty"`
-	AcceptanceCriteria []string `yaml:"acceptanceCriteria,omitempty"`
-	Tier               string   `yaml:"tier,omitempty"` // "ai" (default) or "human"
+	ID           string   `yaml:"id"`
+	Instruction  string   `yaml:"instruction"`
+	DependsOn    []string `yaml:"dependsOn,omitempty"`
+	ProjectParts []string `yaml:"projectParts,omitempty"`
+	Tier         string   `yaml:"tier,omitempty"` // "ai" (default) or "human"
 }
 
 // Milestone represents a collection of steps working toward a goal
@@ -89,10 +88,6 @@ const configSchema = `{
                 "projectParts": {
                   "type": "array",
                   "items": { "type": "string" }
-                },
-                "acceptanceCriteria": {
-                  "type": "array",
-                  "items": { "type": "string", "minLength": 1 }
                 },
                 "tier": {
                   "type": "string",
@@ -335,12 +330,6 @@ func generatePromptFragment(step Step, projectParts map[string]ProjectPart) stri
 
 	// Add instruction
 	parts = append(parts, step.Instruction)
-
-	// Add acceptance criteria if present
-	if len(step.AcceptanceCriteria) > 0 {
-		criteria := strings.Join(step.AcceptanceCriteria, "; ")
-		parts = append(parts, fmt.Sprintf("[done when: %s]", criteria))
-	}
 
 	return strings.Join(parts, " ")
 }
