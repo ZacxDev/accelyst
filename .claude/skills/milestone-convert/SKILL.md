@@ -11,13 +11,14 @@ Convert unstructured feature backlogs into the Accelyst milestone YAML format.
 ## Process
 
 1. **Read the input** - Accept feature lists, TODO files, scratch notes, or any unstructured feature description
-2. **Identify project parts** - Extract logical components (client, api, database, services, etc.)
+2. **Identify project parts** - Extract logical components (client, api, database, services, etc.) + always include `test`
 3. **Group into milestones** - Cluster related features into coherent milestones
 4. **Identify milestone dependencies** - Determine which milestones must complete before others can start
 5. **Decompose into steps** - Break each milestone into atomic, actionable steps
-6. **Map step dependencies** - Identify which steps depend on others within each milestone
-7. **Assign project parts** - Link each step to relevant project components
-8. **Generate YAML** - Output valid Accelyst configuration
+6. **Add test steps** - Every milestone must have at least one step referencing the `test` project part
+7. **Map step dependencies** - Identify which steps depend on others within each milestone
+8. **Assign project parts** - Link each step to relevant project components
+9. **Generate YAML** - Output valid Accelyst configuration
 
 ## Milestone Organization
 
@@ -34,8 +35,11 @@ For each milestone, create steps following this pattern:
 1. **Analysis steps** (no dependencies) - Research, documentation lookup, codebase analysis
 2. **Design steps** (depend on analysis) - Architecture decisions, schema design
 3. **Implementation steps** (depend on design) - Core feature implementation
-4. **Integration steps** (depend on implementation) - Connecting components, API wiring
-5. **Polish steps** (depend on integration) - UI refinement, error handling, edge cases
+4. **Testing steps** (depend on implementation) - Unit tests, integration tests, E2E tests (REQUIRED)
+5. **Integration steps** (depend on testing) - Connecting components, API wiring
+6. **Polish steps** (depend on integration) - UI refinement, error handling, edge cases
+
+**Testing is mandatory**: Every milestone must include at least one step that references the `test` project part. This ensures all features have test coverage by default.
 
 ## Dependency Rules
 
@@ -57,6 +61,8 @@ projectParts:
   - name: <component-name>
     directoryAbs: <absolute-path>
     documentationAbs: <docs-path>  # optional
+  - name: test                     # REQUIRED: always include test project part
+    directoryAbs: <path-to-tests>
 
 milestones:
   - id: <milestone_id>
@@ -68,6 +74,12 @@ milestones:
         dependsOn: []
         projectParts:
           - <component-name>
+      - id: <test_step_id>         # REQUIRED: at least one test step per milestone
+        instruction: "<write tests for ...>"
+        dependsOn:
+          - <implementation_step>
+        projectParts:
+          - test
 ```
 
 ## Example Transformation
@@ -87,6 +99,8 @@ projectParts:
     directoryAbs: /path/to/client
   - name: api
     directoryAbs: /path/to/api
+  - name: test
+    directoryAbs: /path/to/tests
 
 milestones:
   - id: dark_mode_api
@@ -104,6 +118,12 @@ milestones:
           - design_schema
         projectParts:
           - api
+      - id: test_endpoint
+        instruction: "write unit and integration tests for preference sync endpoint"
+        dependsOn:
+          - impl_endpoint
+        projectParts:
+          - test
 
   - id: dark_mode_ui
     name: "Dark Mode Toggle"
@@ -132,6 +152,12 @@ milestones:
           - impl_toggle
         projectParts:
           - client
+      - id: test_toggle
+        instruction: "write component tests for theme toggle and persistence"
+        dependsOn:
+          - add_persistence
+        projectParts:
+          - test
 
   - id: dark_mode_sync
     name: "Dark Mode Sync"
@@ -150,6 +176,12 @@ milestones:
           - impl_sync
         projectParts:
           - client
+      - id: test_sync
+        instruction: "write integration tests for preference sync including conflict scenarios"
+        dependsOn:
+          - handle_conflicts
+        projectParts:
+          - test
 ```
 
 ## Quality Checklist
@@ -166,5 +198,7 @@ Before outputting, verify:
 - [ ] Analysis/research steps have no dependencies (parallelizable)
 - [ ] Implementation steps depend on their prerequisites
 - [ ] Instructions are actionable and specific
+- [ ] **`test` project part is defined** (REQUIRED)
+- [ ] **Every milestone has at least one step referencing `test`** (REQUIRED)
 
 For the complete specification, see [SPEC.md](../../../SPEC.md).
